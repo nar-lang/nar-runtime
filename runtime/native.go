@@ -4,7 +4,7 @@ package runtime
 #cgo LDFLAGS: -ldl
 #include <dlfcn.h>
 #include <stdlib.h>
-#include "../../nar-c/nar.h"
+#include "../package-native/nar.h"
 
 typedef int (*init_fn_t)(init_data_t*);
 int init_wrapper(void* init_fn, nar_runtime_t runtime);
