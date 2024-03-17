@@ -2,4 +2,4 @@
 
 package runtime
 
-const kDebug = false
+const KDebug = false

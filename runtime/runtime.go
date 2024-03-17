@@ -10,7 +10,7 @@ import (
 //TODO: make const objects when loading binary, and dont copy for every instance
 //TODO: make string objects for every string in binary, and dont copy for every instance
 
-func NewRuntime(program *bytecode.Binary) *Runtime {
+func NewRuntime(program *bytecode.Binary, libsPath string) (*Runtime, error) {
 	rt := &Runtime{
 		program:           program,
 		defs:              map[bytecode.FullIdentifier]Object{},
@@ -23,7 +23,14 @@ func NewRuntime(program *bytecode.Binary) *Runtime {
 		rt.arenas[i] = newTypedArenaWithKind(InstanceKind(i), initialCapacity)
 	}
 	rt.Clean(true)
-	return rt
+
+	for name, version := range program.Packages {
+		err := rt.registerPackage(string(name), int(version), libsPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return rt, nil
 }
 
 type Runtime struct {
@@ -36,7 +43,7 @@ type Runtime struct {
 	frameMemory       []unsafe.Pointer
 }
 
-func (rt *Runtime) Dispose() {
+func (rt *Runtime) Destroy() {
 	for _, arena := range rt.arenas {
 		arena.clean(true)
 	}
@@ -54,7 +61,7 @@ func (rt *Runtime) Apply(defName bytecode.FullIdentifier, args ...Object) (Objec
 	if !ok {
 		return invalidObject, fmt.Errorf("definition `%s` is not exported by loaded binary", defName)
 	}
-	if kDebug && fnIndex >= bytecode.Pointer(len(rt.program.Funcs)) {
+	if KDebug && fnIndex >= bytecode.Pointer(len(rt.program.Funcs)) {
 		return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid function pointer)")
 	}
 	fn := rt.program.Funcs[fnIndex]
@@ -98,7 +105,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 		opKind, b, c, a := fn.Ops[index].Decompose()
 		switch opKind {
 		case bytecode.OpKindLoadLocal:
-			if kDebug && a >= uint32(len(rt.program.Strings)) {
+			if KDebug && a >= uint32(len(rt.program.Strings)) {
 				return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid local name)")
 			}
 			name := TString(rt.program.Strings[a])
@@ -110,11 +117,11 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 					break
 				}
 			}
-			if kDebug && !found {
+			if KDebug && !found {
 				return invalidObject, fmt.Errorf("loaded binary is corrupted (undefined local `%s`)", name)
 			}
 		case bytecode.OpKindLoadGlobal:
-			if kDebug && a >= uint32(len(rt.program.Funcs)) {
+			if KDebug && a >= uint32(len(rt.program.Funcs)) {
 				return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid global pointer)")
 			}
 			glob := rt.program.Funcs[a]
@@ -140,22 +147,22 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 			case bytecode.ConstKindChar:
 				value = rt.NewChar(TChar(a))
 			case bytecode.ConstKindInt:
-				if kDebug && a >= uint32(len(rt.program.Consts)) {
+				if KDebug && a >= uint32(len(rt.program.Consts)) {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid const index)")
 				}
 				value = rt.NewInt(TInt(rt.program.Consts[a].Int()))
 			case bytecode.ConstKindFloat:
-				if kDebug && a >= uint32(len(rt.program.Consts)) {
+				if KDebug && a >= uint32(len(rt.program.Consts)) {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid const index)")
 				}
 				value = rt.NewFloat(TFloat(rt.program.Consts[a].Float()))
 			case bytecode.ConstKindString:
-				if kDebug && a >= uint32(len(rt.program.Strings)) {
+				if KDebug && a >= uint32(len(rt.program.Strings)) {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid string index)")
 				}
 				value = rt.NewString(TString(rt.program.Strings[a]))
 			default:
-				if kDebug {
+				if KDebug {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid const kind)")
 				}
 			}
@@ -165,7 +172,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 			case bytecode.StackKindPattern:
 				patternStack = append(patternStack, value)
 			default:
-				if kDebug {
+				if KDebug {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid stack kind)")
 				}
 			}
@@ -198,7 +205,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 				objectStack = append(objectStack, rt.newClosure(afn.fn, args...))
 			}
 		case bytecode.OpKindCall:
-			if kDebug && a >= uint32(len(rt.program.Strings)) {
+			if KDebug && a >= uint32(len(rt.program.Strings)) {
 				return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid string index)")
 			}
 			name := rt.program.Strings[a]
@@ -240,7 +247,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 					return invalidObject, err
 				}
 				if !match {
-					if kDebug && a == 0 {
+					if KDebug && a == 0 {
 						return invalidObject, fmt.Errorf("pattern match with jump delta 0 should not fail")
 					}
 					index += int(a)
@@ -281,7 +288,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 				}
 				objectStack = append(objectStack, rt.NewOption(name, values...))
 			default:
-				if kDebug {
+				if KDebug {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid object kind)")
 				}
 			}
@@ -292,7 +299,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 			kind := bytecode.PatternKind(b)
 			switch kind {
 			case bytecode.PatternKindAlias:
-				if kDebug && a >= uint32(len(rt.program.Strings)) {
+				if KDebug && a >= uint32(len(rt.program.Strings)) {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid string index)")
 				}
 				name = rt.NewString(TString(rt.program.Strings[a]))
@@ -304,7 +311,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 			case bytecode.PatternKindConst:
 				items, err = popX(&patternStack, 1)
 			case bytecode.PatternKindDataOption:
-				if kDebug && a >= uint32(len(rt.program.Strings)) {
+				if KDebug && a >= uint32(len(rt.program.Strings)) {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid string index)")
 				}
 				name = rt.NewString(TString(rt.program.Strings[a]))
@@ -312,7 +319,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 			case bytecode.PatternKindList:
 				items, err = popX(&patternStack, int(c)) //TODO: use a register for list length
 			case bytecode.PatternKindNamed:
-				if kDebug && a >= uint32(len(rt.program.Strings)) {
+				if KDebug && a >= uint32(len(rt.program.Strings)) {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid string index)")
 				}
 				name = rt.NewString(TString(rt.program.Strings[a]))
@@ -321,7 +328,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 			case bytecode.PatternKindTuple:
 				items, err = popX(&patternStack, int(c))
 			default:
-				if kDebug {
+				if KDebug {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid pattern kind)")
 				}
 			}
@@ -334,7 +341,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 			}
 			patternStack = append(patternStack, p)
 		case bytecode.OpKindAccess:
-			if kDebug && a >= uint32(len(rt.program.Strings)) {
+			if KDebug && a >= uint32(len(rt.program.Strings)) {
 				return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid string index)")
 			}
 			record, err := pop(&objectStack)
@@ -346,12 +353,12 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 			if err != nil {
 				return invalidObject, err
 			}
-			if kDebug && !ok {
+			if KDebug && !ok {
 				return invalidObject, fmt.Errorf("record does not have field `%s`", name)
 			}
 			objectStack = append(objectStack, field)
 		case bytecode.OpKindUpdate:
-			if kDebug && a >= uint32(len(rt.program.Strings)) {
+			if KDebug && a >= uint32(len(rt.program.Strings)) {
 				return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid string index)")
 			}
 			key := rt.program.Strings[a]
@@ -382,12 +389,12 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 					return invalidObject, err
 				}
 			default:
-				if kDebug {
+				if KDebug {
 					return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid swap pop mode)")
 				}
 			}
 		default:
-			if kDebug {
+			if KDebug {
 				return invalidObject, fmt.Errorf("loaded binary is corrupted (invalid op kind)")
 			}
 		}
@@ -404,7 +411,7 @@ func (rt *Runtime) execute(fn bytecode.Func, objectStack []Object) (Object, erro
 	if err != nil {
 		return invalidObject, err
 	}
-	if kDebug && len(objectStack) != 0 {
+	if KDebug && len(objectStack) != 0 {
 		return invalidObject, fmt.Errorf("stack is not empty after execution")
 	}
 	return result, nil
@@ -427,7 +434,7 @@ func (rt *Runtime) match(pattern Object, obj Object, numLocals *int) (bool, erro
 		if err != nil {
 			return false, err
 		}
-		if kDebug && len(nested) != 1 {
+		if KDebug && len(nested) != 1 {
 			return false, fmt.Errorf("alias pattern should have exactly one nested pattern")
 		}
 		return rt.match(nested[0], obj, numLocals)
@@ -438,7 +445,7 @@ func (rt *Runtime) match(pattern Object, obj Object, numLocals *int) (bool, erro
 		if err != nil {
 			return false, err
 		}
-		if kDebug && len(nested) != 2 {
+		if KDebug && len(nested) != 2 {
 			return false, fmt.Errorf("cons pattern should have exactly two nested patterns")
 		}
 		if obj.invalid() {
@@ -461,7 +468,7 @@ func (rt *Runtime) match(pattern Object, obj Object, numLocals *int) (bool, erro
 		if err != nil {
 			return false, err
 		}
-		if kDebug && len(nested) != 1 {
+		if KDebug && len(nested) != 1 {
 			return false, fmt.Errorf("const pattern should have exactly one nested pattern")
 		}
 		return constEqualsTo(rt, nested[0], obj)
@@ -569,7 +576,7 @@ func (rt *Runtime) match(pattern Object, obj Object, numLocals *int) (bool, erro
 		}
 		return true, nil
 	default:
-		if kDebug {
+		if KDebug {
 			return false, fmt.Errorf("loaded binary is corrupted (invalid pattern kind)")
 		}
 	}
@@ -584,6 +591,17 @@ func (rt *Runtime) Stack() []string {
 	return stack
 }
 
+func (rt *Runtime) AppendFrameMemory(mem unsafe.Pointer) {
+	rt.frameMemory = append(rt.frameMemory, mem)
+}
+
+func (rt *Runtime) FreeFrameMemory(free func(unsafe.Pointer)) {
+	for _, ptr := range rt.frameMemory {
+		free(ptr)
+	}
+	rt.frameMemory = rt.frameMemory[:0]
+}
+
 type ModuleName string
 
 type DefName string
@@ -594,7 +612,7 @@ type local struct {
 }
 
 func pop[T any](stack *[]T) (x T, err error) {
-	if kDebug && len(*stack) == 0 {
+	if KDebug && len(*stack) == 0 {
 		err = fmt.Errorf("stack is empty")
 		return
 	}
@@ -604,7 +622,7 @@ func pop[T any](stack *[]T) (x T, err error) {
 }
 
 func popX[T any](stack *[]T, n int) (xs []T, err error) {
-	if kDebug && len(*stack) < n {
+	if KDebug && len(*stack) < n {
 		err = fmt.Errorf("stack underflow")
 		return
 	}

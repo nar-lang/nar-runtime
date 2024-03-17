@@ -7,4 +7,5 @@ go 1.21
 //)
 
 require golang.org/x/text v0.14.0
+
 require github.com/nar-lang/nar-common v1.0.0

@@ -73,15 +73,15 @@ func UpdateRecordField(rt *Runtime, o Object, key Object, value Object) (Object,
 }
 
 func ToRecordFields(rt *Runtime, o Object) ([]struct {
-	k TString
-	v Object
+	K TString
+	V Object
 }, error) {
 	if o.Kind() != InstanceKindRecord {
 		return nil, fmt.Errorf("expected %s, got %s", kindToString(InstanceKindRecord), kindToString(o.Kind()))
 	}
 	var r []struct {
-		k TString
-		v Object
+		K TString
+		V Object
 	}
 	it := o
 	for it.valid() {
@@ -94,9 +94,9 @@ func ToRecordFields(rt *Runtime, o Object) ([]struct {
 			return nil, fmt.Errorf("failed to unwrap key: %w", err)
 		}
 		r = append(r, struct {
-			k TString
-			v Object
-		}{k: k, v: f.value})
+			K TString
+			V Object
+		}{K: k, V: f.value})
 		it = f.parent
 	}
 	return r, nil

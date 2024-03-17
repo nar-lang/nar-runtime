@@ -70,12 +70,12 @@ func (rt *Runtime) newTupleItem(value Object, next Object) Object {
 func (rt *Runtime) NewList(elems ...Object) Object {
 	first := newObject(InstanceKindList, invalidIndex)
 	for i := len(elems) - 1; i >= 0; i-- {
-		first = rt.newListItem(elems[i], first)
+		first = rt.NewListItem(elems[i], first)
 	}
 	return first
 }
 
-func (rt *Runtime) newListItem(value Object, next Object) Object {
+func (rt *Runtime) NewListItem(value Object, next Object) Object {
 	return rt.arenas[InstanceKindList].(*typedArenaImpl[listItem]).add(listItem{value: value, next: next})
 }
 
@@ -96,42 +96,42 @@ func (rt *Runtime) NewBool(b bool) Object {
 }
 
 func (rt *Runtime) NewFunc0(f func() Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 0)
+	return rt.NewFunc(unsafe.Pointer(&f), 0)
 }
 
 func (rt *Runtime) NewFunc1(f func(Object) Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 1)
+	return rt.NewFunc(unsafe.Pointer(&f), 1)
 }
 
 func (rt *Runtime) NewFunc2(f func(Object, Object) Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 2)
+	return rt.NewFunc(unsafe.Pointer(&f), 2)
 }
 
 func (rt *Runtime) NewFunc3(f func(Object, Object, Object) Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 3)
+	return rt.NewFunc(unsafe.Pointer(&f), 3)
 }
 
 func (rt *Runtime) NewFunc4(f func(Object, Object, Object, Object) Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 4)
+	return rt.NewFunc(unsafe.Pointer(&f), 4)
 }
 
 func (rt *Runtime) NewFunc5(f func(Object, Object, Object, Object, Object) Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 5)
+	return rt.NewFunc(unsafe.Pointer(&f), 5)
 }
 
 func (rt *Runtime) NewFunc6(f func(Object, Object, Object, Object, Object, Object) Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 6)
+	return rt.NewFunc(unsafe.Pointer(&f), 6)
 }
 
 func (rt *Runtime) NewFunc7(f func(Object, Object, Object, Object, Object, Object, Object) Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 7)
+	return rt.NewFunc(unsafe.Pointer(&f), 7)
 }
 
 func (rt *Runtime) NewFunc8(f func(Object, Object, Object, Object, Object, Object, Object, Object) Object) Object {
-	return rt.newFunc(unsafe.Pointer(&f), 8)
+	return rt.NewFunc(unsafe.Pointer(&f), 8)
 }
 
-func (rt *Runtime) newFunc(ptr unsafe.Pointer, arity uint8) Object {
+func (rt *Runtime) NewFunc(ptr unsafe.Pointer, arity uint8) Object {
 	return rt.arenas[InstanceKindFunction].(*typedArenaImpl[function]).add(function{ptr: ptr, arity: arity})
 }
 
@@ -170,7 +170,7 @@ func (rt *Runtime) Clean(keepCapacity bool) {
 }
 
 func (rt *Runtime) newPattern(name Object, items []Object, kind bytecode.PatternKind) (Object, error) {
-	if kDebug {
+	if KDebug {
 		for _, item := range items {
 			switch item.Kind() {
 			case InstanceKindUnit:
